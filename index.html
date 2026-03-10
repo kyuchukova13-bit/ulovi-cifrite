@@ -49,11 +49,9 @@ let bg, imgBubble, sndCorrect, sndWrong, video, handpose, predictions = [];
 let gameActive = false, score = 0, lives = 3, fallingItems = [], currentMission = null;
 
 function preload() {
-    // Безопасно зареждане - ако файлът липсва, няма да спре играта
-    bg = loadImage('pic.png', null, () => console.log("Липсва pic.png"));
-    imgBubble = loadImage('4.png', null, () => console.log("Липсва 4.png"));
+    bg = loadImage('pic.png', () => console.log("BG OK"), () => console.log("Липсва pic.png"));
+    // Редът за imgBubble е изтрит!
 }
-
 function setup() { 
     createCanvas(windowWidth, windowHeight);
     
@@ -151,10 +149,15 @@ class Item {
     }
     update() { this.y += 4; }
     show() {
-        if (imgBubble) image(imgBubble, this.x - 60, this.y - 60, 120, 120);
-        fill(255); textSize(50); textAlign(CENTER, CENTER);
-        text(this.val, this.x, this.y);
-    }
+    push();
+    fill("#FF4136"); // Ярко червен цвят за цифрите
+    stroke(255);     // Бял контур
+    strokeWeight(8); // Дебел контур за по-добра видимост
+    textSize(100);   // Голям размер
+    textStyle(BOLD);
+    textAlign(CENTER, CENTER);
+    text(this.val, this.x, this.y);
+    pop();
 }
 </script>
 </body>
