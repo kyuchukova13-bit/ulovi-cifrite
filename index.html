@@ -7,62 +7,38 @@
     <script src="https://unpkg.com/ml5@0.12.2/dist/ml5.min.js"></script>
     <style>
         body { margin: 0; overflow: hidden; background: #001f3f; font-family: 'Arial Black', sans-serif; }
-        
-        /* Екран за автоматично зареждане */
         #loading-screen {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             background: #001f3f; color: white; display: flex; flex-direction: column;
             align-items: center; justify-content: center; z-index: 4000;
         }
-
         #menu {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             background: linear-gradient(to bottom, #001f3f, #0074D9); 
             display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 2000;
         }
-
-        h1 { font-size: 80px; color: #FFDC00; text-shadow: 6px 6px #FF4136; margin: 10px 0; }
-        .author-main { font-size: 28px; color: #fff; margin-bottom: 30px; font-style: italic; opacity: 0.9; }
-        .section-label { font-size: 28px; color: #fff; margin-top: 20px; text-transform: uppercase; }
-        .btn-group { margin: 10px; display: flex; flex-wrap: wrap; justify-content: center; gap: 15px; width: 90%; }
-        .btn-menu {
-            padding: 20px 40px; font-size: 26px; cursor: pointer; border: none; border-radius: 20px;
-            color: white; font-weight: bold; box-shadow: 0 8px #333; transition: 0.1s;
-        }
-        .btn-menu:active { box-shadow: 0 3px #111; transform: translateY(5px); }
-        .math { background: #0074D9; border: 3px solid #fff; }
-        .table { background: #FF851B; padding: 15px 25px; font-size: 22px; border: 2px solid #fff; }
-        .lang { background: #2ECC40; border: 3px solid #fff; }
+        h1 { font-size: 60px; color: #FFDC00; text-shadow: 4px 4px #FF4136; text-align: center; }
+        .btn-group { display: flex; flex-wrap: wrap; justify-content: center; gap: 15px; margin: 10px; }
+        .btn-menu { padding: 20px 30px; font-size: 22px; cursor: pointer; border-radius: 15px; border: 3px solid white; color: white; font-weight: bold; transition: 0.2s; }
+        .math { background: #0074D9; }
+        .lang { background: #2ECC40; }
+        .btn-menu:hover { transform: scale(1.1); }
     </style>
 </head>
 <body>
 
 <div id="loading-screen">
-    <h1>ЗАРЕЖДАНЕ...</h1>
+    <h1 id="status-text">ЗАРЕЖДАНЕ...</h1>
     <p>Моля, разрешете достъп до камерата</p>
 </div>
 
 <div id="menu">
     <h1>МИСИЯ: ЗНАНИЕ</h1>
-    <div class="author-main">Автор: Дочка Кючукова</div>
-    
-    <div class="section-label">🔢 Четни Числа</div>
+    <div style="color:white; margin-bottom:20px;">Автор: Дочка Кючукова</div>
     <div class="btn-group">
-        <button class="btn-menu math" onclick="startMission('even', 10)">До 10</button>
-        <button class="btn-menu math" onclick="startMission('even', 20)">До 20</button>
-        <button class="btn-menu math" onclick="startMission('even', 100)">До 100</button>
+        <button class="btn-menu math" onclick="startMission('even', 10)">Четни до 10</button>
+        <button class="btn-menu math" onclick="startMission('even', 20)">Четни до 20</button>
     </div>
-
-    <div class="section-label">✖ Таблица за умножение</div>
-    <div class="btn-group">
-        <script>
-            for(let i=2; i<=9; i++) {
-                document.write(`<button class="btn-menu table" onclick="startMission('multi', ${i})">x${i}</button>`);
-            }
-        </script>
-    </div>
-
-    <div class="section-label">🇧🇬 Български език</div>
     <div class="btn-group">
         <button class="btn-menu lang" onclick="startMission('vowels')">Гласни</button>
         <button class="btn-menu lang" onclick="startMission('consonants')">Съгласни</button>
@@ -70,50 +46,36 @@
 </div>
 
 <script>
-let bg, imgBubble;
-let sndCorrect, sndWrong;
-let video, handpose, predictions = [];
-let gameActive = false;
-let score = 0, lives = 3;
-let fallingItems = [];
-let bubbleEffects = [];
-let currentMission = null;
+let bg, imgBubble, sndCorrect, sndWrong, video, handpose, predictions = [];
+let gameActive = false, score = 0, lives = 3, fallingItems = [], currentMission = null;
 
 function preload() {
-    // Използваме callback функции, за да не блокираме играта при грешка
-    bg = loadImage('pic.png', 
-        () => console.log("BG loaded"), 
-        () => console.error("Липсва pic.png - ще се ползва син фон")
-    );
-    imgBubble = loadImage('4.png', 
-        () => console.log("Bubble loaded"), 
-        () => console.error("Липсва 4.png")
-    );
+    // Безопасно зареждане: ако файлът липсва, играта няма да спре
+    bg = loadImage('pic.png', () => console.log("BG OK"), () => console.log("Липсва pic.png"));
+    imgBubble = loadImage('4.png', () => console.log("Bubble OK"), () => console.log("Липсва 4.png"));
 }
 
 function setup() { 
     createCanvas(windowWidth, windowHeight);
     
-    // Подсигуряваме аудио обектите, за да не гърми кода
+    // Инициализация на звуци
     try {
         sndCorrect = new Audio('1.mp3');
         sndWrong = new Audio('2.mp3');
-    } catch(e) {
-        console.log("Звуковите файлове не са намерени");
-    }
-    
-    initCamera();
-}
+    } catch(e) { console.log("Грешка при звука"); }
 
-function initCamera() {
+    // Стартиране на камерата
     video = createCapture(VIDEO, () => {
+        console.log("Камерата е пусната");
         handpose = ml5.handpose(video, () => {
+            console.log("Моделът е зареден");
             document.getElementById('loading-screen').style.display = 'none';
             document.getElementById('menu').style.display = 'flex';
         });
-        handpose.on("predict", results => { predictions = results; });
+        handpose.on("predict", res => { predictions = res; });
     });
-    video.size(640, 480); video.hide();
+    video.size(640, 480);
+    video.hide();
 }
 
 function startMission(type, val) {
@@ -125,61 +87,45 @@ function startMission(type, val) {
 function draw() {
     if (bg) image(bg, 0, 0, width, height); else background(0, 50, 100);
 
-    if (gameActive) {
-        if (predictions.length > 0) {
-            let hand = predictions[0].landmarks[8];
-            let x = map(hand[0], 0, 640, width, 0);
-            let y = map(hand[1], 0, 480, 0, height);
-            
-            fill(255, 255, 255, 100); noStroke();
-            ellipse(x, y, 80, 80);
-            textSize(80); textAlign(CENTER, CENTER);
-            text("✋", x, y); 
-            handleCollision(x, y);
-        }
+    if (!gameActive) return;
 
-        let canSpawn = fallingItems.length === 0 || fallingItems[fallingItems.length-1].y > 250;
-        if (canSpawn && fallingItems.length < 3) {
-            fallingItems.push(new Item());
-        }
+    // Управление с ръка
+    if (predictions.length > 0) {
+        let hand = predictions[0].landmarks[8]; // Показалец
+        let x = map(hand[0], 0, 640, width, 0);
+        let y = map(hand[1], 0, 480, 0, height);
+        
+        noStroke(); fill(255, 200); ellipse(x, y, 40, 40);
+        checkHit(x, y);
+    }
 
-        for (let i = fallingItems.length - 1; i >= 0; i--) {
-            fallingItems[i].update();
-            fallingItems[i].show();
-            if (fallingItems[i].y > height + 50) {
-                if (fallingItems[i].isCorrect) { 
-                    lives--; 
-                    if(sndWrong) sndWrong.play().catch(e => {}); 
-                }
-                fallingItems.splice(i, 1);
-            }
-        }
+    // Създаване на елементи
+    if (frameCount % 60 === 0) fallingItems.push(new Item());
 
-        for (let i = bubbleEffects.length - 1; i >= 0; i--) {
-            bubbleEffects[i].update(); bubbleEffects[i].show();
-            if (bubbleEffects[i].y < -50) bubbleEffects.splice(i, 1);
+    for (let i = fallingItems.length - 1; i >= 0; i--) {
+        fallingItems[i].update();
+        fallingItems[i].show();
+        if (fallingItems[i].y > height) {
+            if (fallingItems[i].isCorrect) lives--;
+            fallingItems.splice(i, 1);
         }
+    }
+    
+    drawUI();
 
-        drawHUD();
-
-        if (lives <= 0 || score >= 10) {
-            gameActive = false;
-            setTimeout(() => { document.getElementById('menu').style.display = 'flex'; }, 2000);
-        }
+    if (lives <= 0) {
+        gameActive = false;
+        setTimeout(() => { document.getElementById('menu').style.display = 'flex'; }, 2000);
     }
 }
 
-function handleCollision(hx, hy) {
+function checkHit(hx, hy) {
     for (let i = fallingItems.length - 1; i >= 0; i--) {
-        let it = fallingItems[i];
-        if (dist(hx, hy, it.x, it.y) < 70) {
-            if (it.isCorrect) {
-                score++; 
-                if(sndCorrect) sndCorrect.play().catch(e => {});
-                for(let b=0; b<8; b++) bubbleEffects.push(new Bubble(it.x, it.y));
-            } else {
-                lives--; 
-                if(sndWrong) sndWrong.play().catch(e => {});
+        if (dist(hx, hy, fallingItems[i].x, fallingItems[i].y) < 80) {
+            if (fallingItems[i].isCorrect) { 
+                score++; if(sndCorrect) sndCorrect.play(); 
+            } else { 
+                lives--; if(sndWrong) sndWrong.play(); 
             }
             fallingItems.splice(i, 1);
         }
@@ -188,9 +134,9 @@ function handleCollision(hx, hy) {
 
 class Item {
     constructor() {
-        this.x = random(150, width - 150);
-        this.y = -100;
-        this.speed = 3.5;
+        this.x = random(100, width - 100);
+        this.y = -50;
+        this.speed = 4;
         this.generate();
     }
     generate() {
@@ -198,10 +144,6 @@ class Item {
         if (m.type === 'even') {
             this.val = floor(random(1, m.value + 1));
             this.isCorrect = (this.val % 2 === 0);
-        } else if (m.type === 'multi') {
-            let r = floor(random(1, 11));
-            this.val = (random() > 0.5) ? m.value * r : m.value * r + floor(random(1, 3));
-            this.isCorrect = (this.val % m.value === 0);
         } else if (m.type === 'vowels') {
             let v = "АЕИОУЪ"; let c = "БВГДЖЗКЛМНПРСТ";
             this.val = (random() > 0.5) ? v[floor(random(v.length))] : c[floor(random(c.length))];
@@ -214,26 +156,17 @@ class Item {
     }
     update() { this.y += this.speed; }
     show() {
-        push();
-        fill("#FF4136"); stroke(255); strokeWeight(10);
-        textSize(100); textStyle(BOLD); textAlign(CENTER);
+        if (imgBubble) image(imgBubble, this.x, this.y, 120, 120);
+        fill(255); textSize(50); textAlign(CENTER, CENTER);
         text(this.val, this.x, this.y);
-        pop();
     }
 }
 
-class Bubble {
-    constructor(x, y) { this.x = x; this.y = y; this.size = random(30, 60); this.speed = random(3, 6); }
-    update() { this.y -= this.speed; this.x += sin(this.y * 0.1) * 2; }
-    show() { if(imgBubble) image(imgBubble, this.x, this.y, this.size, this.size); }
-}
-
-function drawHUD() {
-    fill(0, 180); noStroke(); rect(20, 20, 300, 110, 20);
-    fill("#FFDC00"); textSize(32); textAlign(LEFT);
-    text("⭐ Точки: " + score + "/10", 40, 60);
-    let h = ""; for(let i=0; i<lives; i++) h += "❤️";
-    text("Живот: " + h, 40, 100);
+function drawUI() {
+    fill(0, 150); rect(10, 10, 250, 80, 15);
+    fill("#FFDC00"); textSize(25); textAlign(LEFT);
+    text("⭐ Точки: " + score, 30, 40);
+    text("❤️ Живот: " + lives, 30, 70);
 }
 </script>
 </body>
