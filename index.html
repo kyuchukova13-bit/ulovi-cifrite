@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+    <meta charset="UTF-8">
+    <title>Мисия: Знание - Дочка Кючукова</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
+    <script src="https://unpkg.com/ml5@0.12.2/dist/ml5.min.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background: #001f3f; font-family: 'Arial Black', sans-serif; }
+        
+        /* Екран за автоматично зареждане */
+        #loading-screen {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: #001f3f; color: white; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; z-index: 4000;
+        }
+
+        #menu {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(to bottom, #001f3f, #0074D9); 
+            display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 2000;
+        }
+
+        h1 { font-size: 80px; color: #FFDC00; text-shadow: 6px 6px #FF4136; margin: 10px 0; }
+        .author-main { font-size: 28px; color: #fff; margin-bottom: 30px; font-style: italic; opacity: 0.9; }
+        .section-label { font-size: 28px; color: #fff; margin-top: 20px; text-transform: uppercase; }
+        .btn-group { margin: 10px; display: flex; flex-wrap: wrap; justify-content: center; gap: 15px; width: 90%; }
+        .btn-menu {
+            padding: 20px 40px; font-size: 26px; cursor: pointer; border: none; border-radius: 20px;
+            color: white; font-weight: bold; box-shadow: 0 8px #333; transition: 0.1s;
+        }
+        .btn-menu:active { box-shadow: 0 3px #111; transform: translateY(5px); }
+        .math { background: #0074D9; border: 3px solid #fff; }
+        .table { background: #FF851B; padding: 15px 25px; font-size: 22px; border: 2px solid #fff; }
+        .lang { background: #2ECC40; border: 3px solid #fff; }
+    </style>
+</head>
+<body>
+
+<div id="loading-screen">
+    <h1>ЗАРЕЖДАНЕ...</h1>
+    <p>Моля, разрешете достъп до камерата</p>
+</div>
+
+<div id="menu">
+    <h1>МИСИЯ: ЗНАНИЕ</h1>
+    <div class="author-main">Автор: Дочка Кючукова</div>
+    
+    <div class="section-label">🔢 Четни Числа</div>
+    <div class="btn-group">
+        <button class="btn-menu math" onclick="startMission('even', 10)">До 10</button>
+        <button class="btn-menu math" onclick="startMission('even', 20)">До 20</button>
+        <button class="btn-menu math" onclick="startMission('even', 100)">До 100</button>
+    </div>
+
+    <div class="section-label">✖ Таблица за умножение</div>
+    <div class="btn-group">
+        <script>
+            for(let i=2; i<=9; i++) {
+                document.write(`<button class="btn-menu table" onclick="startMission('multi', ${i})">x${i}</button>`);
+            }
+        </script>
+    </div>
+
+    <div class="section-label">🇧🇬 Български език</div>
+    <div class="btn-group">
+        <button class="btn-menu lang" onclick="startMission('vowels')">Гласни</button>
+        <button class="btn-menu lang" onclick="startMission('consonants')">Съгласни</button>
+    </div>
+</div>
+
+<script>
+let bg, imgBubble;
+let sndCorrect, sndWrong;
+let video, handpose, predictions = [];
+let gameActive = false;
+let score = 0, lives = 3;
+let fallingItems = [];
+let bubbleEffects = [];
+let currentMission = null;
+
+function preload() {
+    // Използваме callback функции, за да не блокираме играта при грешка
+    bg = loadImage('pic.png', 
+        () => console.log("BG loaded"), 
+        () => console.error("Липсва pic.png - ще се ползва син фон")
+    );
+    imgBubble = loadImage('4.png', 
+        () => console.log("Bubble loaded"), 
+        () => console.error("Липсва 4.png")
+    );
+}
+
+function setup() { 
+    createCanvas(windowWidth, windowHeight);
+    
+    // Подсигуряваме аудио обектите, за да не гърми кода
+    try {
+        sndCorrect = new Audio('1.mp3');
+        sndWrong = new Audio('2.mp3');
+    } catch(e) {
+        console.log("Звуковите файлове не са намерени");
+    }
+    
+    initCamera();
+}
+
+function initCamera() {
+    video = createCapture(VIDEO, () => {
+        handpose = ml5.handpose(video, () => {
+            document.getElementById('loading-screen').style.display = 'none';
+            document.getElementById('menu').style.display = 'flex';
+        });
+        handpose.on("predict", results => { predictions = results; });
+    });
+    video.size(640, 480); video.hide();
+}
+
+function startMission(type, val) {
+    currentMission = { type, value: val };
+    score = 0; lives = 3; fallingItems = []; gameActive = true;
+    document.getElementById('menu').style.display = 'none';
+}
+
+function draw() {
+    if (bg) image(bg, 0, 0, width, height); else background(0, 50, 100);
+
+    if (gameActive) {
+        if (predictions.length > 0) {
+            let hand = predictions[0].landmarks[8];
+            let x = map(hand[0], 0, 640, width, 0);
+            let y = map(hand[1], 0, 480, 0, height);
+            
+            fill(255, 255, 255, 100); noStroke();
+            ellipse(x, y, 80, 80);
+            textSize(80); textAlign(CENTER, CENTER);
+            text("✋", x, y); 
+            handleCollision(x, y);
+        }
+
+        let canSpawn = fallingItems.length === 0 || fallingItems[fallingItems.length-1].y > 250;
+        if (canSpawn && fallingItems.length < 3) {
+            fallingItems.push(new Item());
+        }
+
+        for (let i = fallingItems.length - 1; i >= 0; i--) {
+            fallingItems[i].update();
+            fallingItems[i].show();
+            if (fallingItems[i].y > height + 50) {
+                if (fallingItems[i].isCorrect) { 
+                    lives--; 
+                    if(sndWrong) sndWrong.play().catch(e => {}); 
+                }
+                fallingItems.splice(i, 1);
+            }
+        }
+
+        for (let i = bubbleEffects.length - 1; i >= 0; i--) {
+            bubbleEffects[i].update(); bubbleEffects[i].show();
+            if (bubbleEffects[i].y < -50) bubbleEffects.splice(i, 1);
+        }
+
+        drawHUD();
+
+        if (lives <= 0 || score >= 10) {
+            gameActive = false;
+            setTimeout(() => { document.getElementById('menu').style.display = 'flex'; }, 2000);
+        }
+    }
+}
+
+function handleCollision(hx, hy) {
+    for (let i = fallingItems.length - 1; i >= 0; i--) {
+        let it = fallingItems[i];
+        if (dist(hx, hy, it.x, it.y) < 70) {
+            if (it.isCorrect) {
+                score++; 
+                if(sndCorrect) sndCorrect.play().catch(e => {});
+                for(let b=0; b<8; b++) bubbleEffects.push(new Bubble(it.x, it.y));
+            } else {
+                lives--; 
+                if(sndWrong) sndWrong.play().catch(e => {});
+            }
+            fallingItems.splice(i, 1);
+        }
+    }
+}
+
+class Item {
+    constructor() {
+        this.x = random(150, width - 150);
+        this.y = -100;
+        this.speed = 3.5;
+        this.generate();
+    }
+    generate() {
+        let m = currentMission;
+        if (m.type === 'even') {
+            this.val = floor(random(1, m.value + 1));
+            this.isCorrect = (this.val % 2 === 0);
+        } else if (m.type === 'multi') {
+            let r = floor(random(1, 11));
+            this.val = (random() > 0.5) ? m.value * r : m.value * r + floor(random(1, 3));
+            this.isCorrect = (this.val % m.value === 0);
+        } else if (m.type === 'vowels') {
+            let v = "АЕИОУЪ"; let c = "БВГДЖЗКЛМНПРСТ";
+            this.val = (random() > 0.5) ? v[floor(random(v.length))] : c[floor(random(c.length))];
+            this.isCorrect = v.includes(this.val);
+        } else if (m.type === 'consonants') {
+            let v = "АЕИОУЪ"; let c = "БВГДЖЗЙКЛМНПРСТФХЦЧШЩ";
+            this.val = (random() > 0.5) ? c[floor(random(c.length))] : v[floor(random(v.length))];
+            this.isCorrect = c.includes(this.val);
+        }
+    }
+    update() { this.y += this.speed; }
+    show() {
+        push();
+        fill("#FF4136"); stroke(255); strokeWeight(10);
+        textSize(100); textStyle(BOLD); textAlign(CENTER);
+        text(this.val, this.x, this.y);
+        pop();
+    }
+}
+
+class Bubble {
+    constructor(x, y) { this.x = x; this.y = y; this.size = random(30, 60); this.speed = random(3, 6); }
+    update() { this.y -= this.speed; this.x += sin(this.y * 0.1) * 2; }
+    show() { if(imgBubble) image(imgBubble, this.x, this.y, this.size, this.size); }
+}
+
+function drawHUD() {
+    fill(0, 180); noStroke(); rect(20, 20, 300, 110, 20);
+    fill("#FFDC00"); textSize(32); textAlign(LEFT);
+    text("⭐ Точки: " + score + "/10", 40, 60);
+    let h = ""; for(let i=0; i<lives; i++) h += "❤️";
+    text("Живот: " + h, 40, 100);
+}
+</script>
+</body>
+</html>
